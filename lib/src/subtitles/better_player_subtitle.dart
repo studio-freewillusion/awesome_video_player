@@ -93,23 +93,99 @@ class BetterPlayerSubtitle {
   static BetterPlayerSubtitle _handle3LinesAndMoreSubtitles(
       List<String> scanner, bool isWebVTT) {
     try {
+      // int? index = -1;
+      // List<String> timeSplit = [];
+      // int firstLineOfText = 0;
+      // if (scanner[0].contains(timerSeparator)) {
+      //   timeSplit = scanner[0].split(timerSeparator);
+      //   firstLineOfText = 1;
+      // } else {
+      //   index = int.tryParse(scanner[0]);
+      //   timeSplit = scanner[1].split(timerSeparator);
+      //   firstLineOfText = 2;
+      // }
+
+      // final start = _stringToDuration(timeSplit[0]);
+      // final end = _stringToDuration(timeSplit[1]);
+      // final texts = scanner.sublist(firstLineOfText, scanner.length);
+      // return BetterPlayerSubtitle._(
+      //     index: index, start: start, end: end, texts: texts);
+      if (scanner.isEmpty) return BetterPlayerSubtitle._();
+
+      final lines = <String>[];
+      for (final l in scanner) {
+        final t = l.trim();
+        if (t.isEmpty && lines.isEmpty) continue;
+        lines.add(t);
+      }
+      while (lines.isNotEmpty && lines.last.isEmpty) {
+        lines.removeLast();
+      }
+      if (lines.length < 2) return BetterPlayerSubtitle._();
+
       int? index = -1;
-      List<String> timeSplit = [];
-      int firstLineOfText = 0;
-      if (scanner[0].contains(timerSeparator)) {
-        timeSplit = scanner[0].split(timerSeparator);
-        firstLineOfText = 1;
+      int timeLineIdx = -1;
+
+      bool looksTime(String s) => s.contains('-->');
+
+      if (looksTime(lines[0])) {
+        timeLineIdx = 0;
+      } else if (lines.length >= 2 && looksTime(lines[1])) {
+        timeLineIdx = 1;
+        final idxStr = lines[0];
+        if (RegExp(r'^\d+$').hasMatch(idxStr)) {
+          index = int.tryParse(idxStr) ?? -1;
+        } else {
+          index = -1;
+        }
       } else {
-        index = int.tryParse(scanner[0]);
-        timeSplit = scanner[1].split(timerSeparator);
-        firstLineOfText = 2;
+        return BetterPlayerSubtitle._();
       }
 
-      final start = _stringToDuration(timeSplit[0]);
-      final end = _stringToDuration(timeSplit[1]);
-      final texts = scanner.sublist(firstLineOfText, scanner.length);
+      final timeParts = lines[timeLineIdx].split(RegExp(r'\s*-->\s*'));
+      if (timeParts.length != 2) return BetterPlayerSubtitle._();
+
+      String _onlyTime(String s) {
+        final tok = s.trim().split(RegExp(r'\s+'));
+        return tok.isNotEmpty ? tok.first : '';
+      }
+
+      final startStr = _onlyTime(timeParts[0]);
+      final endStr = _onlyTime(timeParts[1]);
+      if (startStr.isEmpty || endStr.isEmpty) return BetterPlayerSubtitle._();
+
+      final start = _stringToDuration(startStr);
+      final end = _stringToDuration(endStr);
+      if (start == Duration.zero && end == Duration.zero) {
+        return BetterPlayerSubtitle._();
+      }
+
+      final firstLineOfText = timeLineIdx + 1;
+      if (firstLineOfText >= lines.length) return BetterPlayerSubtitle._();
+
+      String _stripTags(String s) {
+        var t = s
+            .replaceAll(RegExp(r'<\s*v[^>]*>'), '')
+            .replaceAll(RegExp(r'</\s*v\s*>'), '');
+        t = t.replaceAll(RegExp(r'</?(c|i|b|u|ruby|rt|rb|rp|lang)[^>]*>'), '');
+        t = t.replaceAll(RegExp(r'</?[^>]+>'), '');
+        return t;
+      }
+
+      final texts = <String>[];
+      for (var i = firstLineOfText; i < lines.length; i++) {
+        final cleaned = _stripTags(lines[i]).trimRight();
+        if (cleaned.isEmpty) continue;
+        texts.add(cleaned);
+      }
+      if (texts.isEmpty) return BetterPlayerSubtitle._();
+
       return BetterPlayerSubtitle._(
-          index: index, start: start, end: end, texts: texts);
+        index: index,
+        start: start,
+        end: end,
+        texts: texts,
+      );
     } on Exception catch (_) {
       BetterPlayerUtils.log("Failed to parse subtitle line: $scanner");
       return BetterPlayerSubtitle._();
